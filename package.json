@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "lint": "eslint . && prettier -c \"**/*.js\"",
-    "fix": "eslint . --fix && prettier --write \"**/*.js\""
+    "fix": "eslint . --fix || prettier --write \"**/*.js\""
   },
   "author": "Timur Shemsedinov",
   "private": true,

@@ -26,6 +26,7 @@ class Database {
     if (this.#instance) return this.#instance;
     this.#instance = await new Promise((resolve, reject) => {
       const request = indexedDB.open(this.#name, this.#version);
+      console.log(request);
       request.onupgradeneeded = () => {
         const db = request.result;
         for (const { name, options } of this.#stores) {
@@ -43,6 +44,7 @@ class Database {
   async run(storeName, mode, operation) {
     const db = await this.connect();
     return new Promise((resolve, reject) => {
+      console.log({ storeName, mode, operation });
       const tx = db.transaction(storeName, mode);
       let data = null;
       tx.oncomplete = () => resolve(data);
@@ -55,22 +57,22 @@ class Database {
   }
 }
 
-class UserRepository {
+class Repository {
   #db;
   #store;
 
-  constructor(db, store = 'users') {
+  constructor(db, store) {
     this.#db = db;
     this.#store = store;
   }
 
-  async insert(user) {
+  insert(record) {
     return this.#db.run(this.#store, 'readwrite', async (store) => {
-      store.add(user);
+      store.add(record);
     });
   }
 
-  async select() {
+  select() {
     return this.#db.run(this.#store, 'readonly', async (store) => {
       const req = store.getAll();
       return new Promise((resolve) => {
@@ -79,7 +81,7 @@ class UserRepository {
     });
   }
 
-  async get(id) {
+  get({ id }) {
     return this.#db.run(this.#store, 'readonly', async (store) => {
       const req = store.get(id);
       return new Promise((resolve) => {
@@ -88,85 +90,66 @@ class UserRepository {
     });
   }
 
-  async update(user) {
+  update(record) {
     return this.#db.run(this.#store, 'readwrite', async (store) => {
-      store.put(user);
+      store.put(record);
     });
   }
 
-  async delete(id) {
+  delete({ id }) {
     return this.#db.run(this.#store, 'readwrite', async (store) => {
       store.delete(id);
     });
   }
 }
 
-class UserService {
-  #repo;
-  #logger;
-
-  constructor(repo, logger) {
-    this.#repo = repo;
-    this.#logger = logger;
-  }
-
-  async insert(user) {
-    await this.#repo.insert(user);
-    const record = JSON.stringify(user, null, 2);
-    this.#logger.log(`Added: ${record}`);
-  }
-
-  async read() {
-    const users = await this.#repo.select();
-    const data = JSON.stringify(users, null, 2);
-    this.#logger.log(`Users:\n${data}`);
-  }
-
-  async update({ id, update }) {
-    const user = await this.#repo.get(id);
-    if (user) {
-      await update(user);
-      await this.#repo.update(user);
-      const record = JSON.stringify(user, null, 2);
-      this.#logger.log(`Updated:\n${record}`);
-    } else {
-      this.#logger.log(`User with id=${id} not found`);
-    }
-  }
-
-  async delete({ id }) {
-    await this.#repo.delete(id);
-    this.#logger.log(`Deleted user with id=${id}`);
-  }
-}
-
 const entities = [
-  { name: 'users', options: { keyPath: 'id', autoIncrement: true } },
+  { name: 'user', options: { keyPath: 'id', autoIncrement: true } },
 ];
 
 const logger = new Logger('output');
 const db = new Database('Example', 1, entities);
-const repo = new UserRepository(db);
-const service = new UserService(repo, logger);
+const repo = new Repository(db, 'user');
 
-document.getElementById('add').onclick = () => {
-  const name = prompt('Enter user name:');
-  const age = parseInt(prompt('Enter age:'), 10);
-  if (!name || !Number.isInteger(age)) return;
-  service.insert({ name, age });
-};
-
-document.getElementById('get').onclick = () => service.read();
-
-document.getElementById('update').onclick = () => {
-  service.update({
-    id: 1,
-    update: async (user) => {
+const actions = {
+  add: async () => {
+    const name = prompt('Enter user name:');
+    if (!name) return;
+    const age = parseInt(prompt('Enter age:'), 10);
+    if (!Number.isInteger(age)) return;
+    const user = { name, age };
+    await repo.insert(user);
+    const record = JSON.stringify(user, null, 2);
+    logger.log(`Added: ${record}`);
+  },
+  get: async () => {
+    const users = await repo.select();
+    const data = JSON.stringify(users, null, 2);
+    logger.log(`Users:\n${data}`);
+  },
+  update: async () => {
+    const id = 1;
+    const user = await repo.get({ id });
+    if (user) {
       user.age += 1;
-    },
-  });
+      await repo.update(user);
+      const record = JSON.stringify(user, null, 2);
+      logger.log(`Updated:\n${record}`);
+    } else {
+      logger.log(`User with id=${id} not found`);
+    }
+  },
+  delete: async () => {
+    const id = 2;
+    await repo.delete({ id });
+    logger.log(`Deleted user with id=${id}`);
+  },
 };
 
-document.getElementById('delete').onclick = () => {
-  service.delete({ id: 2 });
+const init = () => {
+  for (const [id, handler] of Object.entries(actions)) {
+    document.getElementById(id).onclick = handler;
+  }
 };
+
+init();
