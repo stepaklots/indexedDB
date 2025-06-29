@@ -6,110 +6,157 @@ class Logger {
   }
 
   log(...args) {
-    this.#output.textContent += args.join(' ') + '\n';
-  }
-}
-
-class Database {
-  #name;
-  #version;
-  #stores;
-  #instance;
-
-  constructor(name, version, stores) {
-    this.#name = name;
-    this.#version = version;
-    this.#stores = stores;
-  }
-
-  async connect() {
-    if (this.#instance) return this.#instance;
-    this.#instance = await new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.#name, this.#version);
-      console.log(request);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        for (const { name, options } of this.#stores) {
-          if (!db.objectStoreNames.contains(name)) {
-            db.createObjectStore(name, options);
-          }
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    return this.#instance;
-  }
-
-  async run(storeName, mode, operation) {
-    const db = await this.connect();
-    return new Promise((resolve, reject) => {
-      console.log({ storeName, mode, operation });
-      const tx = db.transaction(storeName, mode);
-      let data = null;
-      tx.oncomplete = () => resolve(data);
-      tx.onerror = () => reject(tx.error);
-      const store = tx.objectStore(storeName);
-      operation(store).then((res) => {
-        data = res;
-      });
-    });
+    const lines = args.map((x) =>
+      typeof x === 'object' ? JSON.stringify(x, null, 2) : x,
+    );
+    this.#output.textContent += lines.join(' ') + '\n';
+    this.#output.scrollTop = this.#output.scrollHeight;
   }
 }
 
 class Repository {
-  #db;
-  #store;
-
   constructor(db, store) {
-    this.#db = db;
-    this.#store = store;
+    this.db = db;
+    this.store = store;
   }
 
   insert(record) {
-    return this.#db.run(this.#store, 'readwrite', async (store) => {
-      store.add(record);
-    });
+    return this.db.execute(this.store, 'readwrite', (store) =>
+      store.add(record),
+    );
   }
 
-  select() {
-    return this.#db.run(this.#store, 'readonly', async (store) => {
-      const req = store.getAll();
-      return new Promise((resolve) => {
-        req.onsuccess = () => resolve(req.result);
-      });
-    });
+  async select({ where, limit, offset, orderBy } = {}) {
+    return this.db.execute(
+      this.store,
+      'readonly',
+      (store) =>
+        new Promise((resolve, reject) => {
+          const results = [];
+          let skipped = 0;
+          const cursorRequest = store.openCursor();
+          cursorRequest.onerror = () => reject(cursorRequest.error);
+          cursorRequest.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (!cursor) {
+              return void resolve(Repository.#order(results, orderBy));
+            }
+            const user = cursor.value;
+            if (!where || where(user)) {
+              if (!offset || skipped >= offset) {
+                results.push(user);
+                if (limit && results.length >= limit) {
+                  return void resolve(this.#order(results, orderBy));
+                }
+              } else {
+                skipped++;
+              }
+            }
+            cursor.continue();
+          };
+        }),
+    );
+  }
+
+  static #order(arr, orderBy) {
+    if (!orderBy) return arr;
+    const [field, dir] = orderBy.split(' ');
+    const sign = dir === 'desc' ? -1 : 1;
+    return [...arr].sort((a, b) => (a[field] > b[field] ? 1 : -1) * sign);
   }
 
   get({ id }) {
-    return this.#db.run(this.#store, 'readonly', async (store) => {
+    return this.db.execute(this.store, 'readonly', (store) => {
       const req = store.get(id);
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
+        req.onerror = () =>
+          reject(req.error || new Error(`Get failed for id=${id}`));
         req.onsuccess = () => resolve(req.result);
       });
     });
   }
 
   update(record) {
-    return this.#db.run(this.#store, 'readwrite', async (store) => {
-      store.put(record);
-    });
+    return this.db.execute(this.store, 'readwrite', (store) =>
+      store.put(record),
+    );
   }
 
   delete({ id }) {
-    return this.#db.run(this.#store, 'readwrite', async (store) => {
-      store.delete(id);
+    return this.db.execute(this.store, 'readwrite', (store) =>
+      store.delete(id),
+    );
+  }
+}
+
+class Database {
+  #name;
+  #version;
+  #entities;
+  #instance;
+  #active = false;
+  #repositories = new Map();
+
+  constructor(name, version, entities) {
+    this.#name = name;
+    this.#version = version;
+    this.#entities = entities;
+    return this.#connect();
+  }
+
+  async #connect() {
+    this.#instance = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.#name, this.#version);
+      request.onupgradeneeded = (event) => this.#upgrade(event);
+      request.onsuccess = () => {
+        this.#active = true;
+        resolve(request.result);
+      };
+      request.onerror = () =>
+        reject(request.error || new Error('IndexedDB open error'));
+    });
+    for (const { name } of this.#entities) {
+      this.#repositories.set(name, new Repository(this, name));
+    }
+    return this;
+  }
+
+  #upgrade(event) {
+    const db = event.target.result;
+    for (const { name, options } of this.#entities) {
+      if (!db.objectStoreNames.contains(name)) {
+        db.createObjectStore(name, options);
+      }
+    }
+  }
+
+  getRepo(name) {
+    return this.#repositories.get(name);
+  }
+
+  async execute(storeName, mode, operation) {
+    if (!this.#active) throw new Error('Database not connected');
+    const db = this.#instance;
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction(storeName, mode);
+        const store = tx.objectStore(storeName);
+        const result = operation(store);
+        tx.oncomplete = () => resolve(result);
+        tx.onerror = () => reject(tx.error || new Error('Transaction error'));
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 }
 
-const entities = [
-  { name: 'user', options: { keyPath: 'id', autoIncrement: true } },
-];
-
 const logger = new Logger('output');
-const db = new Database('Example', 1, entities);
-const repo = new Repository(db, 'user');
+const db = await new Database('Example', 1, [
+  { name: 'user', options: { keyPath: 'id', autoIncrement: true } },
+]);
+
+const repo = db.getRepo('user');
 
 const actions = {
   add: async () => {
@@ -119,36 +166,44 @@ const actions = {
     if (!Number.isInteger(age)) return;
     const user = { name, age };
     await repo.insert(user);
-    const record = JSON.stringify(user, null, 2);
-    logger.log(`Added: ${record}`);
+    logger.log('Added:', user);
   },
+
   get: async () => {
     const users = await repo.select();
-    const data = JSON.stringify(users, null, 2);
-    logger.log(`Users:\n${data}`);
+    logger.log('Users:', users);
   },
+
   update: async () => {
-    const id = 1;
-    const user = await repo.get({ id });
+    const user = await repo.get({ id: 1 });
     if (user) {
       user.age += 1;
       await repo.update(user);
-      const record = JSON.stringify(user, null, 2);
-      logger.log(`Updated:\n${record}`);
+      logger.log('Updated:', user);
     } else {
-      logger.log(`User with id=${id} not found`);
+      logger.log('User with id=1 not found');
     }
   },
+
   delete: async () => {
-    const id = 2;
-    await repo.delete({ id });
-    logger.log(`Deleted user with id=${id}`);
+    await repo.delete({ id: 2 });
+    logger.log('Deleted user with id=2');
+  },
+
+  adults: async () => {
+    const users = await repo.select({
+      where: (user) => user.age >= 18,
+      orderBy: 'name asc',
+      limit: 10,
+    });
+    logger.log('Adults:', users);
   },
 };
 
 const init = () => {
   for (const [id, handler] of Object.entries(actions)) {
-    document.getElementById(id).onclick = handler;
+    const element = document.getElementById(id);
+    if (element) element.onclick = handler;
   }
 };
 

@@ -20,10 +20,18 @@ button {
   cursor: pointer;
 }
 
-pre {
+pre#output {
+  position: fixed;
+  top: 10rem;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 1rem;
   background: #111;
   color: #0f0;
-  padding: 1rem;
-  overflow: auto;
-  max-height: 300px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
 }
