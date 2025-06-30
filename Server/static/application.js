@@ -6,11 +6,13 @@ class Logger {
   }
 
   log(...args) {
-    const lines = args.map((x) =>
-      typeof x === 'object' ? JSON.stringify(x, null, 2) : x,
-    );
+    const lines = args.map(Logger.#serialize);
     this.#output.textContent += lines.join(' ') + '\n';
     this.#output.scrollTop = this.#output.scrollHeight;
+  }
+
+  static #serialize(x) {
+    return typeof x === 'object' ? JSON.stringify(x, null, 2) : x;
   }
 }
 
@@ -21,46 +23,40 @@ class Repository {
   }
 
   insert(record) {
-    return this.db.execute(this.store, 'readwrite', (store) =>
-      store.add(record),
-    );
+    const op = (store) => store.add(record);
+    return this.db.execute(this.store, 'readwrite', op);
   }
 
-  async select({ where, limit, offset, orderBy } = {}) {
-    return this.db.execute(
-      this.store,
-      'readonly',
-      (store) =>
-        new Promise((resolve, reject) => {
-          const results = [];
-          let skipped = 0;
-          const cursorRequest = store.openCursor();
-          cursorRequest.onerror = () => reject(cursorRequest.error);
-          cursorRequest.onsuccess = (event) => {
-            const cursor = event.target.result;
-            if (!cursor) {
-              return void resolve(Repository.#order(results, orderBy));
+  async select({ where, limit, offset, order } = {}) {
+    const op = (store) => {
+      const results = [];
+      let skipped = 0;
+      return new Promise((resolve, reject) => {
+        const cursor = store.openCursor();
+        const done = () => resolve(Repository.#order(results, order));
+        cursor.onerror = () => reject(cursor.error);
+        cursor.onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor) return void done();
+          const record = cursor.value;
+          if (!where || where(record)) {
+            if (!offset || skipped >= offset) {
+              results.push(record);
+              if (limit && results.length >= limit) return void done();
+            } else {
+              skipped++;
             }
-            const user = cursor.value;
-            if (!where || where(user)) {
-              if (!offset || skipped >= offset) {
-                results.push(user);
-                if (limit && results.length >= limit) {
-                  return void resolve(this.#order(results, orderBy));
-                }
-              } else {
-                skipped++;
-              }
-            }
-            cursor.continue();
-          };
-        }),
-    );
+          }
+          cursor.continue();
+        };
+      });
+    };
+    return this.db.execute(this.store, 'readonly', op);
   }
 
-  static #order(arr, orderBy) {
-    if (!orderBy) return arr;
-    const [field, dir] = orderBy.split(' ');
+  static #order(arr, order) {
+    if (!order) return arr;
+    const [field, dir] = order.split(' ');
     const sign = dir === 'desc' ? -1 : 1;
     return [...arr].sort((a, b) => (a[field] > b[field] ? 1 : -1) * sign);
   }
@@ -69,23 +65,20 @@ class Repository {
     return this.db.execute(this.store, 'readonly', (store) => {
       const req = store.get(id);
       return new Promise((resolve, reject) => {
-        req.onerror = () =>
-          reject(req.error || new Error(`Get failed for id=${id}`));
+        req.onerror = () => reject(req.error || new Error(`Cen't get ${id}`));
         req.onsuccess = () => resolve(req.result);
       });
     });
   }
 
   update(record) {
-    return this.db.execute(this.store, 'readwrite', (store) =>
-      store.put(record),
-    );
+    const op = (store) => store.put(record);
+    return this.db.execute(this.store, 'readwrite', op);
   }
 
   delete({ id }) {
-    return this.db.execute(this.store, 'readwrite', (store) =>
-      store.delete(id),
-    );
+    const op = (store) => store.delete(id);
+    return this.db.execute(this.store, 'readwrite', op);
   }
 }
 
@@ -193,7 +186,7 @@ const actions = {
   adults: async () => {
     const users = await repo.select({
       where: (user) => user.age >= 18,
-      orderBy: 'name asc',
+      order: 'name asc',
       limit: 10,
     });
     logger.log('Adults:', users);
