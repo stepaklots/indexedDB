@@ -6,7 +6,7 @@ module.exports = init;
 module.exports = [
   ...init,
   {
-    files: ['Server/static/*.js'],
+    files: ['Pragmatic/**/*.js'],
     languageOptions: {
       sourceType: 'module',
       globals: {

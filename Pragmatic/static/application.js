@@ -1,4 +1,4 @@
-import { Repository, Database } from './storage.js';
+import { Database } from './storage.js';
 
 class Logger {
   #output;
@@ -19,11 +19,11 @@ class Logger {
 }
 
 const logger = new Logger('output');
-const db = await new Database('Example', 1, [
-  { name: 'user', options: { keyPath: 'id', autoIncrement: true } },
-]);
-
-const repo = db.getRepo('user');
+const schemas = {
+  user: { keyPath: 'id', autoIncrement: true },
+};
+const db = await new Database('Example', 1, schemas);
+const repo = db.getStore('user');
 
 const actions = {
   add: async () => {

@@ -17,7 +17,13 @@ const MIME_TYPES = {
   gif: 'image/gif',
 };
 
-const STATIC_PATH = path.join(process.cwd(), './static');
+const folder = process.argv[2];
+if (!folder) {
+  console.log('Usage:   node server <folder>');
+  console.log('Example: node server Pragmatic');
+  process.exit(1);
+}
+const STATIC_PATH = path.join(process.cwd(), folder, 'static');
 
 const toBool = [() => true, () => false];
 

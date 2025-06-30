@@ -4,10 +4,10 @@ import 'fake-indexeddb/auto';
 import { Database } from '../static/storage.js';
 
 test('Database connects and exposes repository', async () => {
-  const entities = [
-    { name: 'user', options: { keyPath: 'id', autoIncrement: true } }
-  ];
+  const entities = {
+    user: { keyPath: 'id', autoIncrement: true },
+  };
   const db = await new Database('TestDatabase', 1, entities);
-  const repo = db.getRepo('user');
-  assert.ok(repo);
+  const user = db.getStore('user');
+  assert.ok(user);
 });

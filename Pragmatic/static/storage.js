@@ -1,7 +1,8 @@
 class Repository {
-  constructor(db, store) {
-    this.db = db;
+  constructor(store, db, schema) {
     this.store = store;
+    this.db = db;
+    this.schema = schema;
   }
 
   insert(record) {
@@ -38,16 +39,19 @@ class Repository {
 
   static #order(arr, order) {
     if (!order) return arr;
-    const [field, dir] = order.split(' ');
+    const [field, dir = 'asc'] = order.split(' ');
     const sign = dir === 'desc' ? -1 : 1;
-    return [...arr].sort((a, b) => (a[field] > b[field] ? 1 : -1) * sign);
+    return [...arr].sort((a, b) => {
+      if (a[field] === b[field]) return 0;
+      return a[field] > b[field] ? sign : -sign;
+    });
   }
 
   get({ id }) {
     return this.db.execute(this.store, 'readonly', (store) => {
       const req = store.get(id);
       return new Promise((resolve, reject) => {
-        req.onerror = () => reject(req.error || new Error(`Cen't get ${id}`));
+        req.onerror = () => reject(req.error || new Error(`Can't get ${id}`));
         req.onsuccess = () => resolve(req.result);
       });
     });
@@ -67,46 +71,56 @@ class Repository {
 class Database {
   #name;
   #version;
-  #entities;
+  #schemas;
   #instance;
   #active = false;
-  #repositories = new Map();
+  #stores = new Map();
 
-  constructor(name, version, entities) {
+  constructor(name, version, schemas) {
     this.#name = name;
     this.#version = version;
-    this.#entities = entities;
-    return this.#connect();
+    this.#schemas = schemas;
+    return this.#open();
+  }
+
+  async #open() {
+    await this.#connect();
+    await this.#init();
+    return this;
   }
 
   async #connect() {
     this.#instance = await new Promise((resolve, reject) => {
       const request = indexedDB.open(this.#name, this.#version);
       request.onupgradeneeded = (event) => this.#upgrade(event);
-      request.onsuccess = () => {
+      request.onsuccess = (event) => {
         this.#active = true;
-        resolve(request.result);
+        resolve(event.target.result);
       };
-      request.onerror = () =>
-        reject(request.error || new Error('IndexedDB open error'));
+      request.onerror = (event) => {
+        reject(event.target.error || new Error('IndexedDB open error'));
+      };
     });
-    for (const { name } of this.#entities) {
-      this.#repositories.set(name, new Repository(this, name));
+  }
+
+  #init() {
+    for (const [name, schema] of Object.entries(this.#schemas)) {
+      const store = new Repository(name, this, schema);
+      this.#stores.set(name, store);
     }
-    return this;
   }
 
   #upgrade(event) {
     const db = event.target.result;
-    for (const { name, options } of this.#entities) {
+    for (const [name, schema] of Object.entries(this.#schemas)) {
       if (!db.objectStoreNames.contains(name)) {
-        db.createObjectStore(name, options);
+        db.createObjectStore(name, schema);
       }
     }
   }
 
-  getRepo(name) {
-    return this.#repositories.get(name);
+  getStore(name) {
+    return this.#stores.get(name);
   }
 
   async execute(storeName, mode, operation) {
