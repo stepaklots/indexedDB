@@ -29,7 +29,7 @@
   - Structure: 2 modules (for db wrapper and for domain code)
   - Declatative DSLs (Domain Specific Language), like:
     - Queries: `db.select({ store: 'user', where: { age: 18 }, order: { name: 'asc' } });`
-    - Schemas: `const schemas = { user: { keyPath: 'id', autoIncrement: true } };`
+    - Schemas: `const schemas = { user: { id: { type: 'int', primary: true }, name: { type: 'str'...`
   - Pros: low ceremony, readable and maintainable, declaratice queries and schemas
   - Cons: DSL adds learning curve, SRP (Single Responsibility Principle) and SoC (Separation of Concerns) partially compliance
 
