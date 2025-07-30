@@ -5,6 +5,8 @@ const transactionModes = {
   readonly: 'readonly',
 };
 
+const ensureArray = (input) => Array.isArray(input) ? input : [input];
+
 const promisify = (request) =>
   new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -44,6 +46,7 @@ export class Database {
   transaction(storeNames, mode, callback) {
     const tx = this.#connection.transaction(storeNames, mode);
     const context = {};
+    storeNames = ensureArray(storeNames);
     for (const storeName of storeNames) {
       const store = tx.objectStore(storeName);
       context[storeName] = {
@@ -79,14 +82,18 @@ export class Database {
   }
 
   getAll(storeName) {
-    return this.transaction([storeName], transactionModes.readonly, (context) =>
-      context[storeName].getAll(),
+    return this.transaction(
+      [storeName],
+      transactionModes.readonly,
+      (context) => context[storeName].getAll(),
     );
   }
 
   get(storeName, id) {
-    return this.transaction([storeName], transactionModes.readonly, (context) =>
-      context[storeName].get(id),
+    return this.transaction(
+      [storeName],
+      transactionModes.readonly,
+      (context) => context[storeName].get(id),
     );
   }
 

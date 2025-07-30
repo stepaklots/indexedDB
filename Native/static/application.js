@@ -44,7 +44,7 @@ document.getElementById('get').onclick = async () => {
 
 document.getElementById('update').onclick = async () => {
   const id = parseInt(prompt('Enter id:'), 10);
-  await db.transaction(['user'], 'readwrite', async (tx) => {
+  await db.transaction('user', 'readwrite', async (tx) => {
     const user = await tx.user.get(id);
     user.age += 1;
     await tx.user.put(user);
