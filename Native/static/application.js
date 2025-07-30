@@ -1,4 +1,5 @@
-import { Database } from './database.js';
+import { Database } from './db.js';
+import { upgradeCallback } from './db-upgrade.js';
 
 class Logger {
   #output;
@@ -20,52 +21,54 @@ class Logger {
 
 const logger = new Logger('output');
 
-const db = await new Database({
+const dbInstance = new Database({
   dbName: 'indexedDBWrapper',
-  storeName: 'user',
   version: 1,
-}).connect();
+  upgradeCallback,
+});
+const db = await dbInstance.connect();
 
 document.getElementById('add').onclick = async () => {
   const name = prompt('Enter user name:');
   if (!name) return;
   const age = parseInt(prompt('Enter age:'), 10);
   if (!Number.isInteger(age)) return;
-  db.create({ name, age })
-    .then(() => logger.log('Added:', { name, age }))
-    .catch((error) => logger.log('Add failed', error));
+  await db.add('user', { name, age });
+  logger.log('Added:', { name, age });
 };
 
-document.getElementById('get').onclick = () => {
-  db.getAll()
-    .then((result) => logger.log('Users:', result))
-    .catch((error) => logger.log('Get failed', error));
+document.getElementById('get').onclick = async () => {
+  const result = await db.getAll('user');
+  logger.log('Users:', result);
 };
 
-document.getElementById('update').onclick = () => {
-  db.updateById(1, (user) => {
+document.getElementById('update').onclick = async () => {
+  const id = parseInt(prompt('Enter id:'), 10);
+  await db.transaction(['user'], 'readwrite', async (tx) => {
+    const user = await tx.user.get(id);
     user.age += 1;
-    return user;
-  })
-    .then((result) => logger.log('Updated:', result))
-    .catch((error) => logger.log('Update failed', error));
+    await tx.user.put(user);
+    logger.log('Updated:', user);
+  });
 };
 
-document.getElementById('delete').onclick = () => {
+document.getElementById('delete').onclick = async () => {
   const userId = 2;
-  db.delete(userId)
-    .then(() => logger.log(`Deleted user id[${userId}]`))
-    .catch((error) => logger.log('Delete failed', error));
+  await db.delete('user', userId);
+  logger.log(`Deleted user id[${userId}]`);
 };
 
-document.getElementById('adults').onclick = () => {
-  db.findBy((user) => user.age >= 18)
-    .then((result) => logger.log('Adults:', result))
-    .catch((error) => logger.log('Adults query failed', error));
+document.getElementById('adults').onclick = async () => {
+  const adults = [];
+  for await (const user of db.cursorIterator('user')) {
+    if (user.age >= 18) {
+      adults.push(user);
+    }
+  }
+  logger.log('Adults:', adults);
 };
 
-document.getElementById('clear').onclick = () => {
-  db.deleteAll()
-    .then(() => logger.log('Deleted all'))
-    .catch((error) => logger.log('Deleted all failed', error));
+document.getElementById('clear').onclick = async () => {
+  await db.clear('user');
+  logger.log('Deleted all');
 };
