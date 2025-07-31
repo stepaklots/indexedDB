@@ -1,4 +1,6 @@
 import { cursorIterator } from './cursor-iterator.js';
+import { upgradeCallback } from './db-upgrade.js';
+import { transactionContext } from './transaction-context.js';
 
 const transactionModes = {
   readwrite: 'readwrite',
@@ -7,22 +9,15 @@ const transactionModes = {
 
 const ensureArray = (input) => Array.isArray(input) ? input : [input];
 
-const promisify = (request) =>
-  new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-
-
 export class Database {
   #connection;
   #dbName;
   #upgradeCallback;
   #version;
 
-  constructor({ dbName, version = 1, upgradeCallback = (db) => {} }) {
+  constructor({ dbName, version = 1, callback = upgradeCallback }) {
     this.#dbName = dbName;
-    this.#upgradeCallback = upgradeCallback;
+    this.#upgradeCallback = callback;
     this.#version = version;
   }
 
@@ -45,21 +40,7 @@ export class Database {
 
   transaction(storeNames, mode, callback) {
     const tx = this.#connection.transaction(storeNames, mode);
-    const context = {};
-    storeNames = ensureArray(storeNames);
-    for (const storeName of storeNames) {
-      const store = tx.objectStore(storeName);
-      context[storeName] = {
-        add: (record) => promisify(store.add(record)),
-        put: (record) => promisify(store.put(record)),
-        get: (id) => promisify(store.get(id)),
-        getAll: () => promisify(store.getAll()),
-        delete: (id) => promisify(store.delete(id)),
-        count: () => promisify(store.count()),
-        clear: () => promisify(store.clear()),
-      };
-    }
-
+    const context = transactionContext(tx);
     return new Promise((resolve, reject) => {
       try {
         const result = callback(context);
@@ -83,49 +64,49 @@ export class Database {
 
   getAll(storeName) {
     return this.transaction(
-      [storeName],
+      storeName,
       transactionModes.readonly,
-      (context) => context[storeName].getAll(),
+      (context) => context.getAll(storeName),
     );
   }
 
   get(storeName, id) {
     return this.transaction(
-      [storeName],
+      storeName,
       transactionModes.readonly,
-      (context) => context[storeName].get(id),
+      (context) => context.get(storeName, id),
     );
   }
 
   add(storeName, record) {
     return this.transaction(
-      [storeName],
+      storeName,
       transactionModes.readwrite,
-      (context) => context[storeName].add(record),
+      (context) => context.add(storeName, record),
     );
   }
 
   put(storeName, record) {
     return this.transaction(
-      [storeName],
+      storeName,
       transactionModes.readwrite,
-      (context) => context[storeName].put(record),
+      (context) => context.put(storeName, record),
     );
   }
 
   delete(storeName, id) {
     return this.transaction(
-      [storeName],
+      storeName,
       transactionModes.readwrite,
-      (context) => context[storeName].delete(id),
+      (context) => context.delete(storeName, id),
     );
   }
 
   clear(storeName) {
     return this.transaction(
-      [storeName],
+      storeName,
       transactionModes.readwrite,
-      (context) => context[storeName].clear(),
+      (context) => context.clear(storeName),
     );
   }
 }

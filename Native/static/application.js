@@ -1,5 +1,4 @@
-import { Database } from './db.js';
-import { upgradeCallback } from './db-upgrade.js';
+import { Database } from './db/db.js';
 
 class Logger {
   #output;
@@ -23,8 +22,6 @@ const logger = new Logger('output');
 
 const dbInstance = new Database({
   dbName: 'indexedDBWrapper',
-  version: 1,
-  upgradeCallback,
 });
 const db = await dbInstance.connect();
 
@@ -43,11 +40,13 @@ document.getElementById('get').onclick = async () => {
 };
 
 document.getElementById('update').onclick = async () => {
+  const userStore = 'user';
   const id = parseInt(prompt('Enter id:'), 10);
-  await db.transaction('user', 'readwrite', async (tx) => {
-    const user = await tx.user.get(id);
+  await db.transaction(userStore, 'readwrite', async (tx) => {
+    const user = await tx.get(userStore, id);
     user.age += 1;
-    await tx.user.put(user);
+    // await tx.abort();
+    await tx.put(userStore, user);
     logger.log('Updated:', user);
   });
 };
