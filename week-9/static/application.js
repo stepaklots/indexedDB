@@ -12,7 +12,7 @@ const schemas = {
   },
 };
 const db = await new Database('Demo', { version: 1, schemas });
-const repository = new Repository(db);
+const repository = new Repository(db, 'user');
 const userService = new UserService(repository, logger);
 
 const action = (id, handler) => {

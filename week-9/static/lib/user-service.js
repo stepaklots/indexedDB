@@ -1,5 +1,3 @@
-const userStore = 'user';
-
 export class UserService {
   #repository;
   #logger;
@@ -14,34 +12,30 @@ export class UserService {
     const age = parseInt(prompt('Enter age:'), 10);
     const user = { name, age };
     this.#validate(user);
-    await this.#repository.insert({ store: userStore, record: user });
+    await this.#repository.insert(user);
     this.#logger.log('Added:', user);
   }
 
   async findAll() {
-    const users = await this.#repository.getAll({ store: userStore });
+    const users = await this.#repository.getAll();
     this.#logger.log('Users:', users);
   }
 
   async incrementAge(id) {
-    const user = await this.#repository.txUpdate({
-      store: userStore,
-      id,
-      action: (user) => {
-        user.age += 1;
-        return user;
-      },
+    const user = await this.#repository.txUpdate(id, (user) => {
+      user.age += 1;
+      return user;
     });
     this.#logger.log('Updated:', user);
   }
 
   async delete(id) {
-    await this.#repository.delete({ store: userStore, id });
+    await this.#repository.delete(id);
     this.#logger.log('Deleted user with id=2');
   }
 
   async findAdults() {
-    const users = await this.#repository.getAll({ store: userStore });
+    const users = await this.#repository.getAll();
     const adults = users.filter((user) => user.age >= 18);
     this.#logger.log('Adults:', adults);
   }
