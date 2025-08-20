@@ -1,9 +1,10 @@
+import { transactionContext } from './transaction-context.js';
+
 export class Database {
   #name;
   #version;
   #schemas;
   #instance = null;
-  #active = false;
 
   constructor(name, { version = 1, schemas = {} } = {}) {
     this.#name = name;
@@ -18,7 +19,6 @@ export class Database {
       request.onupgradeneeded = (event) => this.#upgrade(event.target.result);
       request.onsuccess = (event) => {
         this.#instance = event.target.result;
-        this.#active = true;
         resolve();
       };
       request.onerror = (event) => {
@@ -44,17 +44,17 @@ export class Database {
     }
   }
 
-  exec(store, operation, mode = 'readwrite') {
-    if (!this.#active) {
-      return Promise.reject(new Error('Database not connected'));
+  transaction(storeNames, mode, callback) {
+    if (!this.#instance) {
+      return Promise.reject(new Error('Database not initialized'));
     }
+    const tx = this.#instance.transaction(storeNames, mode);
+    const context = transactionContext(tx);
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.#instance.transaction(store, mode);
-        const objectStore = tx.objectStore(store);
-        const result = operation(objectStore);
+        const result = callback(context);
         tx.oncomplete = () => resolve(result);
-        tx.onerror = () => reject(tx.error ?? new Error('Transaction error'));
+        tx.onerror = () => reject(tx.error);
       } catch (error) {
         reject(error);
       }

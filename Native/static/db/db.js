@@ -7,8 +7,6 @@ const transactionModes = {
   readonly: 'readonly',
 };
 
-const ensureArray = (input) => Array.isArray(input) ? input : [input];
-
 export class Database {
   #connection;
   #dbName;
