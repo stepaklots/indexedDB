@@ -23,7 +23,7 @@ const indexedDbRepository = async () => {
   return new IndexedDBRepository(db, 'user');
 };
 
-const repository = await opfsRepository();
+const repository = await indexedDbRepository();
 const userService = new UserService(repository, logger);
 
 const action = (id, handler) => {

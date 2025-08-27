@@ -2,6 +2,8 @@ import { IRepository } from './i-repository';
 import { IRecord } from './i-record';
 
 export class OpfsRepository<T extends IRecord> implements IRepository<T> {
+  constructor(root: FileSystemDirectoryHandle)
+
   insert(record: T): Promise<T>;
   getAll(id: string): Promise<T[]>;
   get(): Promise<T>;

@@ -85,7 +85,10 @@ export class OpfsRepository {
 
   async #getNextId() {
     const files = await this.#getAllFiles();
-    const lastId = files.map((file) => parseInt(file.name)).sort().pop();
+    const lastId = files
+      .map((file) => parseInt(file.name))
+      .sort((a, b) => a - b)
+      .pop();
     console.log(`lastId: ${lastId}`);
     if (lastId) {
       return (lastId + 1).toString();
