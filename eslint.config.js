@@ -12,6 +12,7 @@ module.exports = [
       'Pragmatic/**/*.js',
       'week-8/**/*.js',
       'week-9/**/*.js',
+      'week-10/**/*.js',
     ],
     languageOptions: {
       sourceType: 'module',
